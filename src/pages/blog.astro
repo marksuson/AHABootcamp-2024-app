@@ -1,15 +1,17 @@
 ---
-import LayoutSite from '../layouts/LayoutSite.astro'
+export const prerender = true;
 
-import { getCollection } from 'astro:content'
-let posts = await getCollection('blog')
+import LayoutSite from "../layouts/LayoutSite.astro";
+
+import { getCollection } from "astro:content";
+let posts = await getCollection("blog");
 
 posts = posts.sort(
-  (a, b) => new Date(b.data.date).valueOf() - new Date(a.data.date).valueOf(),
-)
+  (a, b) => new Date(b.data.date).valueOf() - new Date(a.data.date).valueOf()
+);
 ---
 
-<LayoutSite title={'Blog'}>
+<LayoutSite title={"Blog"}>
   <ul class="py-10 px-6 mx-auto max-w-7xl space-y-10">
     {
       posts.map((post) => {
@@ -19,7 +21,7 @@ posts = posts.sort(
               {post.data.title}
             </a>
           </li>
-        )
+        );
       })
     }
   </ul>

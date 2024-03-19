@@ -5,6 +5,7 @@ import type {
   ProjectsResponse,
   ProjectsRecord,
   TasksRecord,
+  TasksResponse,
 } from "@src/data/pocketbase-types";
 
 export const pb = new PocketBase(
@@ -23,6 +24,7 @@ export async function getProjects() {
 export async function addProject(name: string) {
   const newProject = await pb.collection("projects").create({
     name,
+    created_by: pb.authStore.model?.id,
     status: "not started",
   });
 
@@ -44,27 +46,34 @@ export async function getProject(id: string) {
 export async function addTask(project_id: string, text: string) {
   const newTask = await pb.collection("tasks").create({
     project: project_id,
+    created_by: pb.authStore.model?.id,
     text,
   });
 
   return newTask;
 }
 
-export async function getTasks(project_id: string) {
+export async function getTasks({
+  project_id = null,
+  done = false,
+}): Promise<TasksResponse<TexpandProject>[]> {
   const options = {
-    filter: `project = "${project_id}"`,
+    filter: "",
   };
-  let tasks;
-  try {
-    tasks = await pb.collection("tasks").getFullList(options);
-  } catch (error) {
-    console.log(error);
-  }
+
+  let filter = `completed = ${done}`;
+  filter += ` && project = "${project_id}"`;
+
+  options.filter = filter;
+
+  let tasks: TasksResponse<TexpandProject>[] = [];
+
+  tasks = await pb.collection("tasks").getFullList(options);
 
   return tasks;
 }
 
-function getStatus(project) {
+function getStatus(project: ProjectsResponse) {
   switch (project.status) {
     case "not started":
       return 7;
@@ -100,3 +109,23 @@ export async function deleteTask(id: string) {
 export async function updateTask(id: string, data: TasksRecord) {
   await pb.collection("tasks").update(id, data);
 }
+
+export async function getStarredTasks(): Promise<
+  TasksResponse<TexpandProject>[]
+> {
+  const options = {
+    sort: "-starred_on",
+    filter: "starred = true && completed = false",
+    expand: "project",
+  };
+
+  let tasks: TasksResponse<TexpandProject>[] = [];
+
+  tasks = await pb.collection("tasks").getFullList(options);
+
+  return tasks;
+}
+
+type TexpandProject = {
+  project?: ProjectsResponse;
+};

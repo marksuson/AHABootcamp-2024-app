@@ -41,7 +41,7 @@ export enum ProjectsStatusOptions {
   "in progress" = "in progress",
   "almost finished" = "almost finished",
   "done" = "done",
-  "on going" = "on going",
+  "ongoing" = "ongoing",
   "on hold" = "on hold",
   "archived" = "archived",
 }

@@ -11,7 +11,7 @@ import HamburgerMenuButton from "@components/app/HamburgerMenuButton.astro";
 
 import TasksList from "@components/app/tasks/TasksList.astro";
 
-const projects = await getProjects();
+const projects = await getProjects({});
 ---
 
 <LayoutApp title="Dashboard">

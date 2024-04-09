@@ -6,6 +6,7 @@ import type {
   ProjectsRecord,
   TasksRecord,
   TasksResponse,
+  TeamsRecord,
 } from "@src/data/pocketbase-types";
 
 export const pb = new PocketBase(
@@ -15,17 +16,23 @@ export const pb = new PocketBase(
 // globally disable auto cancellation
 pb.autoCancellation(false);
 
-export async function getProjects() {
-  const projects = await pb.collection("projects").getFullList();
+export async function getProjects({ team_id }: { team_id?: string }) {
+  const options = { filter: 'team = ""' };
+
+  if (team_id) {
+    options.filter = `team = "${team_id as string}"`;
+  }
+  const projects = await pb.collection("projects").getFullList(options);
 
   return projects.sort((a, b) => getStatus(a) - getStatus(b));
 }
 
-export async function addProject(name: string) {
+export async function addProject(name: string, team_id?: string) {
   const newProject = await pb.collection("projects").create({
     name,
     created_by: pb.authStore.model?.id,
     status: "not started",
+    team: team_id,
   });
 
   return newProject;
@@ -59,6 +66,7 @@ export async function getTasks({
 }): Promise<TasksResponse<TexpandProject>[]> {
   const options = {
     filter: "",
+    sort: "-starred_on, created",
   };
 
   let filter = `completed = ${done}`;
@@ -110,14 +118,19 @@ export async function updateTask(id: string, data: TasksRecord) {
   await pb.collection("tasks").update(id, data);
 }
 
-export async function getStarredTasks(): Promise<
-  TasksResponse<TexpandProject>[]
-> {
+export async function getStarredTasks({
+  team_id = null,
+}): Promise<TasksResponse<TexpandProject>[]> {
   const options = {
     sort: "-starred_on",
     filter: "starred = true && completed = false",
     expand: "project",
   };
+  if (team_id) {
+    options.filter += ` && project.team = "${team_id}"`;
+  } else {
+    options.filter += ` && project.team = ""`;
+  }
 
   let tasks: TasksResponse<TexpandProject>[] = [];
 
@@ -129,3 +142,64 @@ export async function getStarredTasks(): Promise<
 type TexpandProject = {
   project?: ProjectsResponse;
 };
+
+export function processImages(task: TasksResponse) {
+  type ImageItem = {
+    name: string;
+    url: string;
+    url_larger: string;
+  };
+
+  const images: ImageItem[] = [];
+
+  task.images?.map((image: string) => {
+    images.push({
+      name: image,
+      url: pb.files.getUrl(task, image, {
+        thumb: "0x200",
+      }),
+      url_larger: pb.files.getUrl(task, image, {
+        thumb: "0x800",
+      }),
+    });
+  });
+
+  return images;
+}
+
+export async function addTeam(name: string) {
+  let team = await pb.collection("teams").create({
+    name,
+    created_by: pb.authStore.model?.id,
+    status: "inactive",
+  });
+
+  return team;
+}
+
+export async function getTeam(id: string) {
+  const team = await pb.collection("teams").getOne(id);
+
+  return team;
+}
+
+export async function userIsTeamOwner(team_id: string) {
+  const team = await getTeam(team_id);
+  if (team.created_by === pb.authStore.model?.id) {
+    return true;
+  }
+  return false;
+}
+
+export async function getTeams() {
+  const teams = await pb.collection("teams").getFullList();
+  return teams;
+}
+
+export async function deleteTeam(id: string) {
+  return await pb.collection("teams").delete(id);
+}
+
+export async function updateTeam(id: string, data: TeamsRecord) {
+  await pb.collection("teams").update(id, data);
+}

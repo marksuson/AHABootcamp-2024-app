@@ -9,12 +9,14 @@ import StarTaskButton from "@components/app/tasks/StarTaskButton.astro";
 
 import TaskText from "@components/app/tasks/TaskText.astro";
 
-const { project_id, done, starred } = Astro.props;
+import TaskImages from "@components/app/tasks/TaskImages.astro";
+
+const { project_id, done, starred, team_id } = Astro.props;
 
 let tasks = null;
 
 if (starred) {
-  tasks = await getStarredTasks();
+  tasks = await getStarredTasks({ team_id });
 } else {
   tasks = await getTasks({ project_id, done });
 }
@@ -26,32 +28,49 @@ if (starred) {
   )
 }
 
-<ul class="space-y-6 mb-10 text-zinc-900 dark:text-white">
+<ul
+  class="space-y-6 mb-10 text-zinc-900 dark:text-white"
+  x-data="dragAndDropIntoTask()"
+>
   {
     tasks.map((task) => (
-      <li>
-        <div class="flex justify-between space-x-4 items-center">
-          <div>
+      <li
+        @dragover.prevent="dragover = true"
+        @dragleave.prevent="dragover = false"
+        @drop.prevent="drop($event)"
+        hx-put={`/app/api/project/${task.project}/task/${task.id}`}
+        hx-encoding="multipart/form-data"
+        hx-trigger="none"
+        data-images-number={task.images.length}
+      >
+        <div class="flex justify-between gap-x-4">
+          <div class="align-top">
             <CompleteTaskButton task={task} />
           </div>
-          <div>
-            <StarTaskButton task={task} />
+          <div class="flex-1 mt-1">
+            <div class="flex flex-row">
+              <div class="pr-2">
+                <StarTaskButton task={task} />
+              </div>
+              <TaskText task={task} />
+              {starred ? (
+                <div>
+                  <a href={`/app/project/${task.project}`}>
+                    <span class="border mt-0 py-0.5 px-2 self-start rounded-md bg-zinc-800 text-sm font-bold hidden sm:block">
+                      {task.expand?.project?.name}
+                    </span>
+                  </a>
+                </div>
+              ) : (
+                <div>
+                  <DeleteTaskButton task={task} />
+                </div>
+              )}
+            </div>
+            <div>
+              <TaskImages task={task} />
+            </div>
           </div>
-          <TaskText task={task} />
-
-          {starred ? (
-            <div>
-              <a href={`/app/project/${task.project}`}>
-                <span class="border mt-0 py-0.5 px-2 self-start rounded-md bg-zinc-800 text-sm font-bold hidden sm:block">
-                  {task.expand?.project?.name}
-                </span>
-              </a>
-            </div>
-          ) : (
-            <div>
-              <DeleteTaskButton task={task} />
-            </div>
-          )}
         </div>
       </li>
     ))

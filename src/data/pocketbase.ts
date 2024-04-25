@@ -7,7 +7,13 @@ import type {
   TasksRecord,
   TasksResponse,
   TeamsRecord,
+  TeamsResponse,
+  UsersResponse,
+  InvitesResponse,
+  ActivitiesResponse,
 } from "@src/data/pocketbase-types";
+
+import { getUserObjectFromDb } from "@lib/auth";
 
 export const pb = new PocketBase(
   import.meta.env.POCKETBASE_URL || process.env.POCKETBASE_URL
@@ -143,6 +149,18 @@ type TexpandProject = {
   project?: ProjectsResponse;
 };
 
+type TexpandMembers = {
+  members: UsersResponse[];
+};
+
+type TexpandTeam = {
+  team: TeamsResponse;
+};
+
+type TexpandUser = {
+  user: UsersResponse;
+};
+
 export function processImages(task: TasksResponse) {
   type ImageItem = {
     name: string;
@@ -202,4 +220,177 @@ export async function deleteTeam(id: string) {
 
 export async function updateTeam(id: string, data: TeamsRecord) {
   await pb.collection("teams").update(id, data);
+}
+
+export async function getMembersOfTeam(team_id: string) {
+  const team: TeamsResponse<TexpandMembers> = await pb
+    .collection("teams")
+    .getOne(team_id, {
+      expand: "members",
+    });
+
+  return team.expand?.members;
+}
+
+export async function getOwnerOfTeam(team: TeamsResponse) {
+  const user: UsersResponse = await pb
+    .collection("users")
+    .getOne(team.created_by);
+
+  return user;
+}
+
+export async function getInvitesForTeam(team_id: string) {
+  const invites: InvitesResponse[] = await pb
+    .collection("invites")
+    .getFullList({
+      filter: `team = "${team_id}"`,
+    });
+  return invites;
+}
+
+export async function addInvite(team_id: string, email: string) {
+  await pb.collection("invites").create({
+    team: team_id,
+    email,
+  });
+}
+
+export async function getYourInvites() {
+  const options = {
+    filter: `email = "${pb.authStore.model?.email}"`,
+    expand: "team",
+  };
+  const invites: InvitesResponse<TexpandTeam>[] = await pb
+    .collection("invites")
+    .getFullList(options);
+
+  return invites;
+}
+
+export async function addMember(team_id: string, person_id: string) {
+  await pb.collection("teams").update(team_id, {
+    "members+": person_id,
+  });
+}
+
+export async function deleteInvite(id: string) {
+  await pb.collection("invites").delete(id);
+}
+
+export async function getInvite(id: string) {
+  const team: InvitesResponse = await pb.collection("invites").getOne(id);
+
+  return team;
+}
+
+export async function getTask(id: string) {
+  const options = {
+    expand: "project",
+  };
+
+  const task: TasksResponse<TexpandProject> = await pb
+    .collection("tasks")
+    .getOne(id, options);
+
+  return task;
+}
+
+export async function addActivity({
+  team,
+  project,
+  text,
+  type,
+}: {
+  team: string;
+  project: string;
+  text: string;
+  type: string;
+}) {
+  await pb.collection("activities").create({
+    team,
+    project,
+    text,
+    type,
+    user: pb.authStore.model?.id,
+  });
+}
+
+export async function getActivities({
+  team_id,
+  project_id,
+  user_id,
+}: {
+  team_id?: string;
+  project_id?: string;
+  user_id?: string;
+}) {
+  const options = {
+    filter: "",
+    sort: "-created",
+    expand: "team,project,user",
+  };
+
+  if (team_id) {
+    options.filter += `team = "${team_id}"`;
+  }
+  if (project_id) {
+    if (options.filter.length === 0) {
+      options.filter += `project = "${project_id}"`;
+    } else {
+      options.filter += ` && project = "${project_id}"`;
+    }
+  }
+  if (user_id) {
+    if (options.filter.length === 0) {
+      options.filter += `user = "${user_id}"`;
+    } else {
+      options.filter += ` && user = "${user_id}"`;
+    }
+  }
+
+  if (!team_id && !project_id && !user_id) {
+    //@ts-expect-error
+    options.perPage = 100;
+  }
+
+  //@ts-expect-error
+  const activities: ActivitiesResponse<
+    TexpandTeam,
+    TexpandProject,
+    TexpandUser
+  >[] = await pb.collection("activities").getFullList(options);
+
+  return activities;
+}
+
+export async function getAllProjects() {
+  const projects = await pb.collection("projects").getFullList();
+
+  return projects.sort((a, b) => getStatus(a) - getStatus(b));
+}
+
+export async function getCollaborators() {
+  const teams = await getTeams();
+
+  const collaborators: UsersResponse[] = [];
+
+  await Promise.all(
+    teams.map(async (team) => {
+      await Promise.all(
+        team.members.map(async (member) => {
+          const user = await getUserObjectFromDb(member);
+          if (
+            !collaborators.find(
+              (collaborator) => collaborator.username === user.username
+            )
+          ) {
+            collaborators.push(user);
+          }
+        })
+      );
+    })
+  );
+
+  return collaborators.sort((a, b) => a.username.localeCompare(b.username));
 }
